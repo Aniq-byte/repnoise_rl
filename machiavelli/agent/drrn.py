@@ -1,4 +1,3 @@
-
 import time
 import numpy as np
 import torch
@@ -10,18 +9,25 @@ from machiavelli.agent.memory import State
 
 from transformers import AutoModel, AutoTokenizer
 from machiavelli.utils import clean
+from torch.nn.utils.rnn import pad_sequence
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def batch_encoded_tokens(x):
-    """ Takes a list of tokenized sequences and returns a batch of padded sequences
-        token_list: list of tokenized sequences
+    """ Takes a list of tokenized sequences and returns a batch of padded sequences with attention masks.
     """
-    return {'input_ids': torch.nested.to_padded_tensor(torch.nested.nested_tensor([n['input_ids'].squeeze() for n in x]), 0),
-            'attention_mask': torch.nested.to_padded_tensor(torch.nested.nested_tensor([n['attention_mask'].squeeze() for n in x]), 0)}
+    input_ids = [torch.tensor(n['input_ids']).squeeze(0) for n in x]
+    attention_masks = [torch.ones_like(ids) for ids in input_ids]
 
+    # Pad sequences and attention masks
+    padded_input_ids = pad_sequence(input_ids, batch_first=True, padding_value=0)
+    padded_attention_masks = pad_sequence(attention_masks, batch_first=True, padding_value=0)
 
+    return {
+        'input_ids': padded_input_ids.to(device),
+        'attention_mask': padded_attention_masks.to(device)
+    }
 class DRRN(torch.nn.Module):
     """
         Deep Reinforcement Relevance Network - He et al. '16
@@ -48,15 +54,13 @@ class DRRN(torch.nn.Module):
             Returns a tensor of size: len(x) x hidden_dim
         """
         if stats:
-            x = [xi[:rnn.input_size] for xi in x] # TAYLOR - for some reason has longer inputs than rnn input size at times, truncating here
+            x = [xi[:rnn.input_size] for xi in x]  # Truncate to match RNN input size
             inp = torch.stack(x).unsqueeze(0)
             _, out = rnn(inp)
             return out.squeeze(0)
-        
         lengths = torch.cat([n['length'] for n in x])
         x = batch_encoded_tokens(x)
-        # Run the embedding layer
-        # Time x Batch x EncDim
+        # Run the embedding layer with input IDs and attention masks
         embed = self.embedding(**x)['last_hidden_state'].permute(1, 0, 2).detach()
         out, _ = rnn(embed)
 

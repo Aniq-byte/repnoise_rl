@@ -10,4 +10,4 @@ BETA=$2
 THRESH=$3
 REG=$4
 
-python3 -m machiavelli.agent.train_drrn --game ${GAME} --num_env 16 --beta $BETA  --reg_weights $REG --wandb 0 --logit_threshold $THRESH
+py-spy record -o drrn_profile_${GAME}.svg -- python3 -m machiavelli.agent.train_drrn --game ${GAME} --num_env 5 --beta $BETA  --reg_weights $REG --wandb 0 --logit_threshold $THRESH

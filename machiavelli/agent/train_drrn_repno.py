@@ -8,13 +8,7 @@ import numpy as np
 
 import torch
 
-from pathlib import Path
-import pickle
-
-from machiavelli.agent.memory import Transition
-
 from machiavelli.game.machiavelli_env import MachiavelliEnv
-from machiavelli.game.machiavelli_env import Trajectory
 import machiavelli.agent.logger as logger
 from random import choice
 from collections import defaultdict
@@ -23,8 +17,6 @@ from tqdm import tqdm
 from machiavelli.agent.power_regularizer import PowerRegularizer
 from machiavelli.agent.drrn_agent import DRRN_Agent, build_state
 from machiavelli.agent.memory import Transition
-
-from pathlib import Path
 
 
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -48,106 +40,92 @@ def configure_logger(log_dir, suffix, add_tb=1, add_wb=1, args=None):
 
 
 def train(agent, lm, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_freq, args):
-    start = time.time()
-    obs, rewards, dones, infos, transitions, trajectories = [], [], [], [], [], []
-    env_steps, max_score = 0, 0
 
-    # Initialize trajectories for each environment
+    start = time.time()
+    obs, rewards, dones, infos, transitions = [], [], [], [], []
+    env_steps, max_score = 0, 0
     for env in envs:
         ob, info = env.reset(seed=args.seed)
-        obs.append(ob)
-        rewards.append(0)
-        dones.append(False)
-        infos.append(info)
-        transitions.append([])
-        trajectories.append(Trajectory(game_name=args.game, agent_name=str(agent), env_seed=args.seed))
-
+        obs, rewards, dones, infos, transitions = \
+            obs + [ob], rewards + [0], dones + \
+            [False], infos + [info], transitions + [[]]
     states = build_state(agent._tokenize, obs, infos)
-    valid_ids = [[agent._tokenize(a) for a in info['game_state']['choice_texts']] for info in infos]
 
+    valid_ids = [[agent._tokenize(a)
+                  for a in info['game_state']['choice_texts']] for info in infos]
+    
     for step in tqdm(range(1, max_steps + 1)):
-        try:
-            # ACT: Agent chooses an action
-            action_ids, action_idxs, _ = agent.act(states, valid_ids, lm=lm, eps=args.eps,
-                                                   alpha=args.alpha, beta=args.beta, k=args.eps_top_k)
-            action_strs = [info['game_state']['choice_texts'][idx]
-                           for info, idx in zip(infos, action_idxs)]
+        # act
+        action_ids, action_idxs, _ = agent.act(states, valid_ids, lm=lm, eps=args.eps,
+                                                           alpha=args.alpha, beta=args.beta, k=args.eps_top_k)
+        action_strs = [info['game_state']['choice_texts'][idx]
+                       for info, idx in zip(infos, action_idxs)]
 
-            # STEP: Environment responds to the action
-            next_obs, next_rewards, next_dones, next_infos = [], [], [], []
-            for i, (env, action_str, action_idx) in enumerate(zip(envs, action_strs, action_idxs)):
-                ob, reward, done, info = env.step(action_idx)
-                trajectories[i].add(obs[i], action_idx, reward, info)  # Add step to trajectory
+        # step 
+        next_obs, next_rewards, next_dones, next_infos = [], [], [], []
+        for i, (env, action_str, action_idx) in enumerate(zip(envs, action_strs, action_idxs)):
+            ob, reward, done, info = env.step(action_idx)
+            if env.curr_points() >= max_score:  # new high score experienced
+                max_score = env.curr_points()
+                agent.memory.clear_alpha()
+            if done:
+                tb.logkv_mean('EpisodeScore', info['game_state']['points'])
+                if env.curr_points() >= max_score:  # put in alpha queue
+                    for transition in transitions[i]:
+                        agent.observe(transition, is_prior=True)
+                ob, info = env.reset(seed=args.seed)
+                #agent.reset(i)
 
-                if env.curr_points() >= max_score:
-                    max_score = env.curr_points()
-                    agent.memory.clear_alpha()
-                if done:
-                    tb.logkv_mean('EpisodeScore', info['game_state']['points'])
-                    if env.curr_points() >= max_score:
-                        for transition in transitions[i]:
-                            agent.observe(transition, is_prior=True)
-                    ob, info = env.reset(seed=args.seed)
-                    trajectories[i] = Trajectory(game_name=args.game, agent_name=str(agent), env_seed=args.seed)  # Reset trajectory
-                next_obs.append(ob)
-                next_rewards.append(0 if done else reward)
-                next_dones.append(False if done else done)
-                next_infos.append(info)
-
-            # Update observations
-            rewards, dones, infos = next_rewards, next_dones, next_infos
-
-            # LOG: Environment and agent state
-            log(f'>> Action{step}: {action_strs[0]}')
-            log(f"Reward{step}: {rewards[0]}, Score {infos[0]['game_state']['points']}, "
-                f"Num ach {len(infos[0]['game_state']['unlocked_achievements'])}, Done {dones[0]}\n")
-
-            # UPDATE: State, valid actions, and transitions
-            next_states = build_state(agent._tokenize, next_obs, infos, prev_obs=obs, prev_acts=action_strs)
-            next_valids = [[agent._tokenize(a) for a in info['game_state']['choice_texts']] for info in infos]
-            for state, act, rew, next_state, valids, done, transition in zip(states, action_ids, rewards, next_states,
-                                                                             next_valids, dones, transitions):
-                if len(act) > 0:  # not [] (i.e. reset)
-                    transition.append(Transition(
-                        state, act, rew, next_state, valids, done))
-                    agent.observe(transition[-1])
-            obs, states, valid_ids = next_obs, next_states, next_valids
-
-            # Periodic operations
-            if step % log_freq == 0:
-                tb.logkv("FPS", round(
-                    (step * args.num_envs) / (time.time() - start), 2))
-                tb.logkv("Max score seen", max_score)
-                tb.dumpkvs()
-
-            if step % update_freq == 0:
-                agent.update()
-
-            # Save model and trajectories at checkpoints
-            if step % checkpoint_freq == 0:
-                savedir = Path('./checkpoints_utility/')
-                savedir.mkdir(parents=True, exist_ok=True)
-                # torch.save(
-                #    agent, savedir / f'{args.game}_thresh{args.logit_threshold}_alpha{args.alpha}_'
-                #                     f'beta{args.beta}_weights{args.reg_weights}_seed{args.seed}.pt')
-
-                # Save trajectories
-                traj_dir = savedir / 'trajectories' / args.game
-                traj_dir.mkdir(parents=True, exist_ok=True)
-                for i, traj in enumerate(trajectories):
-                    traj.save(traj_dir / f'traj_env{i}_step{step}.pkl')
-
-        except RuntimeError as e:
-            if "All Tensors given to nested_tensor must have the same dimension" in str(e):
-                print(f"Step {step}: Skipping due to tensor dimension mismatch: {e}")
-                continue  # Skip the problematic step
+                next_obs, next_rewards, next_dones, next_infos = next_obs + [ob], next_rewards + [0], next_dones + [
+                    False], next_infos + [info]
             else:
-                raise  # Re-raise other unexpected errors
+                next_obs, next_rewards, next_dones, next_infos = \
+                    next_obs + [ob], next_rewards + \
+                    [reward], next_dones + [done], next_infos + [info]
+        rewards, dones, infos = next_rewards, next_dones, next_infos
 
-        # Manage memory
+        # continue to log envs[0]
+        log('>> Action{}: {}'.format(step, action_strs[0]))
+        log("Reward{}: {}, Score {}, Num ach {}, Done {}\n".format(
+            step, rewards[0], infos[0]['game_state']['points'], len(infos[0]['game_state']['unlocked_achievements']), dones[0]))
+
+        next_states = build_state(
+            agent._tokenize, next_obs, infos, prev_obs=obs, prev_acts=action_strs)
+        next_valids = [
+            [agent._tokenize(a) for a in info['game_state']['choice_texts']] for info in infos]
+        for state, act, rew, next_state, valids, done, transition in zip(states, action_ids, rewards, next_states,
+                                                                         next_valids, dones, transitions):
+            if len(act) > 0:  # not [] (i.e. reset)
+                transition.append(Transition(
+                    state, act, rew, next_state, valids, done))
+                agent.observe(transition[-1])  # , is_prior=(rew != 0))
+        obs, states, valid_ids = next_obs, next_states, next_valids
+
+        if step % log_freq == 0:
+            tb.logkv("FPS", round(
+                (step * args.num_envs) / (time.time() - start), 2))
+            tb.logkv("Max score seen", max_score)
+            # TAYLOR - LOGGING SEEMS BROKEN PAST HERE
+            # tb.logkv("Last100EpisodeScores", np.mean([env.get_points_at_end(last=100) for env in envs]))
+            # tb.logkv("Last100NumAch", np.mean([env.get_ach_at_end(last=100) for env in envs]))
+            # tb.logkv("Last100Selfishness", np.mean([env.get_selfishness_at_end(last=100) for env in envs]))
+            # tb.logkv("Last100Deception", np.mean([env.get_deception_at_end(last=100) for env in envs]))
+            tb.logkv("Step", step)
+            # power = np.mean([env.get_power_at_end(last=100) for env in envs], axis=0)
+            # for p, name in zip(power, ['ResourcePower', 'MoneyImpact', 'SocialImpact', 'UtilityImpact', 'WattsImpact']):
+            #     tb.logkv("Last100{}".format(name), p)
+            tb.dumpkvs()
+        if step % update_freq == 0:
+            agent.update()
+        if (step == 1 or step % checkpoint_freq == 0):
+            savedir = './checkpoints_utility/'
+            os.makedirs(savedir, exist_ok=True)
+            torch.save(
+                agent, savedir+'{}_thresh{}_alpha{}_beta{}_weights{}_seed{}.pt'.format(args.game, args.logit_threshold, args.alpha, args.beta, args.reg_weights, args.seed))
+        del action_ids, action_idxs
         if step % 1000 == 0:
-            print("empty cache")
-            torch.cuda.empty_cache()
+             print("empty cache")
+             torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -156,16 +134,16 @@ def parse_args():
     parser.add_argument('--game', type=str, required=True)
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--num_envs', default=8, type=int)
-    parser.add_argument('--max_steps', default=20000, type=int)
+    parser.add_argument('--max_steps', default=1500, type=int)
     parser.add_argument('--update_freq', default=1, type=int)
     parser.add_argument('--checkpoint_freq', default=1000, type=int)
     parser.add_argument('--eval_freq', default=5000, type=int)
     parser.add_argument('--log_freq', default=100, type=int)
-    parser.add_argument('--memory_size', default=2500, type=int)
+    parser.add_argument('--memory_size', default=10000, type=int)
     parser.add_argument('--priority_fraction', default=0.5, type=float)
-    parser.add_argument('--batch_size', default=4, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--gamma', default=.9, type=float)
-    parser.add_argument('--learning_rate', default=0.0005, type=float)
+    parser.add_argument('--learning_rate', default=0.0001, type=float)
     parser.add_argument('--clip', default=5, type=float)
     parser.add_argument('--embedding_dim', default=128, type=int)
     parser.add_argument('--hidden_dim', default=128, type=int)
@@ -176,7 +154,6 @@ def parse_args():
     parser.add_argument('--wandb_project', default='machiavelli_drrn_agent', type=str)
 
     # language model
-    # microsoft/deberta-v3-small
     parser.add_argument('--lm_name', default='gpt2', type=str)
     parser.add_argument('--regularizer_lm_name',
                         default='gpt2', type=str)
@@ -215,7 +192,6 @@ def main():
         lm = None
     else:
         lm = PowerRegularizer(args.regularizer_lm_name, 'models/model_weights.pth', args.reg_weights, utility_thresh=args.logit_threshold)
-
     with open('machiavelli/agent/game2beta.json') as f:
         game2beta = json.load(f)
     args.game = args.game.strip().lower()

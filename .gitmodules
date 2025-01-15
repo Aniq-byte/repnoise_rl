@@ -1,0 +1,3 @@
+[submodule "representation_noising_xpo"]
+	path = representation_noising_xpo
+	url = https://github.com/domenicrosati/representation-noising-xpo.git

@@ -53,6 +53,7 @@ class DRRN_Agent(BaseAgent):
         self.network = DRRN(args.lm_name, args.stats_dim,
                             args.hidden_dim).to(device)
         self.tokenizer = AutoTokenizer.from_pretrained(args.lm_name, model_max_length=512)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
         # self.memory = ReplayMemory(args.memory_size)
         self.memory = PrioritizedReplayMemory(
             args.memory_size, args.priority_fraction)

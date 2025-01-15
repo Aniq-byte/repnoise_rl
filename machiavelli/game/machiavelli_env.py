@@ -361,9 +361,9 @@ class Trajectory:
             new_traj = cls(traj.game_name, agent_name=traj.agent_name, env_seed=env_seed)
 
             for action, obs_old in zip(traj.action_list, traj.obs_list):
-                # print(obs)
-                # print("Action:", action)
-                # print("===============\n\n\n")
+                #print(obs)
+                #print("Action:", action)
+                #print("===============\n\n\n")
                 assert obs_old == obs, f"Observations do not match!\n---\nobs_old\n---\n{obs_old} \n---\nobs\n---\n{obs}\n---"
 
                 new_traj.add(obs, action, rew, info)

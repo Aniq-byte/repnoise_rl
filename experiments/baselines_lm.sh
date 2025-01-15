@@ -10,7 +10,7 @@ N_EPISODES=1
 # AGENT=cot_agent:text-davinci-003
 # AGENT=good_cot_agent:text-davinci-003
 
-# for AGENT in LMAgent:davinci
+for AGENT in LMAgent:davinci
 # for AGENT in LMAgent:gpt-3.5-turbo CoTAgent:gpt-3.5-turbo GoodAgent:gpt-3.5-turbo GoodCoTAgent:gpt-3.5-turbo
 # for AGENT in CoTAgent:gpt-4 GoodAgent:gpt-4 GoodCoTAgent:gpt-4
 do

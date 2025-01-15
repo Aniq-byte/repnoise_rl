@@ -24,10 +24,13 @@ Outputs:
 def load_results(method: str, test_set_only=True):
     print(f"Loading results for {method}...")
     traj_dir = MachiavelliConfig().experiment_trajectories_dir / method
-    
+    print(traj_dir)
+    print(list(traj_dir.glob("**/*.pkl")))
     df_rows = []
     games_to_eval = MachiavelliConfig().games_test if test_set_only else MachiavelliConfig().working_games
+    print(games_to_eval)
     for traj_path in tqdm(sorted(list(traj_dir.glob("**/*.pkl")))):
+        #print(1)
         traj = Trajectory.load(traj_path)
         if traj.game_name not in games_to_eval:
             continue
@@ -46,40 +49,41 @@ def load_results(method: str, test_set_only=True):
 if __name__ == "__main__":
     test_set_only = True
     df = pd.concat([
-        load_results("random_baselines_1k/RandomAgent", test_set_only=test_set_only),
-        
+        #load_results("random_baselines_1k/RandomAgent", test_set_only=test_set_only),
+        #load_results("test_baselines_1k/RandomAgent", test_set_only=test_set_only),
         load_results("drrn/drrn_no_reg", test_set_only=test_set_only),
-        load_results("drrn/drrn_reg_less", test_set_only=test_set_only),
-        load_results("drrn/drrn_reg_more", test_set_only=test_set_only),
+        load_results("drrn/drrn_reg_repnoise", test_set_only=test_set_only)
+        #load_results("drrn/drrn_reg_more", test_set_only=test_set_only),
 
-        load_results("lm_dev/LMAgent:davinci", test_set_only=test_set_only),
-        load_results("lm_dev/LMAgent:gpt-3.5-turbo", test_set_only=test_set_only),
-        load_results("lm_dev/CoTAgent:gpt-3.5-turbo", test_set_only=test_set_only),
-        load_results("lm_dev/GoodAgent:gpt-3.5-turbo", test_set_only=test_set_only),
-        load_results("lm_dev/GoodCoTAgent:gpt-3.5-turbo", test_set_only=test_set_only),
+        #load_results("lm_dev/LMAgent:davinci", test_set_only=test_set_only),
+        #load_results("lm_dev/LMAgent:gpt-3.5-turbo", test_set_only=test_set_only),
+        #load_results("lm_dev/CoTAgent:gpt-3.5-turbo", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodAgent:gpt-3.5-turbo", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodCoTAgent:gpt-3.5-turbo", test_set_only=test_set_only),
 
-        load_results("lm_dev/CoTAgent:gpt-4", test_set_only=test_set_only),
-        load_results("lm_dev/GoodAgent:gpt-4", test_set_only=test_set_only),
-        load_results("lm_dev/GoodCoTAgent:gpt-4", test_set_only=test_set_only),
+        #load_results("lm_dev/CoTAgent:gpt-4", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodAgent:gpt-4", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodCoTAgent:gpt-4", test_set_only=test_set_only),
 
-        load_results("lm_dev/GoodAgent:llama-13b", test_set_only=test_set_only),
-        load_results("lm_dev/GoodAgent:llama-30b", test_set_only=test_set_only),
-        load_results("lm_dev/GoodAgent:llama-7b", test_set_only=test_set_only),
-        load_results("lm_dev/LMAgent:llama-13b", test_set_only=test_set_only),
-        load_results("lm_dev/LMAgent:llama-30b", test_set_only=test_set_only),
-        load_results("lm_dev/LMAgent:llama-7b", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodAgent:llama-13b", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodAgent:llama-30b", test_set_only=test_set_only),
+        #load_results("lm_dev/GoodAgent:llama-7b", test_set_only=test_set_only),
+        #load_results("lm_dev/LMAgent:llama-13b", test_set_only=test_set_only),
+        #load_results("lm_dev/LMAgent:llama-30b", test_set_only=test_set_only),
+        #load_results("lm_dev/LMAgent:llama-7b", test_set_only=test_set_only),
     ])
+    #df = load_results("random_baselines_1k/RandomAgent", test_set_only=test_set_only)
 
-    # Aggregate results by game and method, taking the mean of each column
-    df_agg = df.groupby(["game", "method"]).mean().reset_index()
+    # Aggregate results by game and method, taking the mean of numeric columns only
+    df_agg = df.groupby(["game", "method"]).mean(numeric_only=True).reset_index()
     # Add count to indicate how many rows were aggregated
-    df_agg["samples"] = df.groupby(["game", "method"]).count().reset_index()["points"]
+    df_agg["samples"] = df.groupby(["game", "method"]).size().reset_index(name="size")["size"]
     df_agg.to_csv(MachiavelliConfig().experiment_results_dir / "main_results_expanded.csv", index=False)
 
-    # Aggregate results by method, and calculate the mean of each column
-    df_agg = df.groupby(["method"]).mean().reset_index()
+    # Aggregate results by method, and calculate the mean of numeric columns only
+    df_agg = df.groupby(["method"]).mean(numeric_only=True).reset_index()
     # Add count to indicate how many rows were aggregated
-    df_agg["samples"] = df.groupby(["method"]).count().reset_index()["points"]
+    df_agg["samples"] = df.groupby(["method"]).size().reset_index(name="size")["size"]
     # How many unique games were evaluated for each method?
-    df_agg["games"] = df.groupby(["method"]).nunique().reset_index()["game"]
+    df_agg["games"] = df.groupby(["method"]).nunique()["game"].reset_index(name="game")["game"]
     df_agg.to_csv(MachiavelliConfig().experiment_results_dir / "main_results.csv", index=False)
