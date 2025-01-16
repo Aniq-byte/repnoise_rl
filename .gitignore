@@ -9,3 +9,5 @@ machiavelli/game/agent/logs/*
 demo*
 wandb*
 venv/
+experiments/conscience/multi_gpt2_5e-06_32_1.pkl
+experiments/conscience/multi_gpt2_5e-06_32_2.pkl

@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 from machiavelli.openai_helpers import completion_with_retries
 
-model = "text-alpha-002-latest" # XYZ
+model = "davinci-002" # XYZ
 temperature = 0.7
 max_tokens = 4096
 

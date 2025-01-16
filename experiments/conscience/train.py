@@ -13,6 +13,8 @@ def main(args):
     data_dir = os.path.abspath("ranking_datasets")
     for run in range(args.nruns):
         model, optimizer = load_model(args)
+        tokenizer = get_tokenizer(args.model)
+        model.module.config.pad_token_id = tokenizer.eos_token_id
 
         tasks = args.tasks
         train_sets, test_loaders, hard_test_loaders = [], [], []
@@ -82,6 +84,7 @@ def train(model, optimizer, train_dataloader, epoch, log_interval=100, verbose=F
         output = model(b_input_ids, attention_mask=b_input_mask)
         if isinstance(output, SequenceClassifierOutput): # this is for deberta, etc. outputs only; not flan
             output = model(b_input_ids, attention_mask=b_input_mask)[0]  # dim 1
+        output = output.logits
         output = unflatten(output)
         diffs = output[:, 0] - output[:, 1]
         
@@ -120,6 +123,7 @@ def evaluate(model, dataloader):
             output = model(b_input_ids, attention_mask=b_input_mask)
             if isinstance(output, SequenceClassifierOutput): # this is for deberta, etc. outputs only; not flan
                 output = output[0]  # dim 1
+            output = output.logits
             output = unflatten(output)
             diffs = output[:, 0] - output[:, 1]
             

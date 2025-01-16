@@ -1,6 +1,6 @@
 #!/bin/sh
 
-export TASKS="paired_cm util power"
+export TASKS="power"
 echo "TASKS=$TASKS"
 
 python3 -u train.py -v \

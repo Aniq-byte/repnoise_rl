@@ -16,8 +16,10 @@ Helper methods for working with the OpenAI API
 """
 
 def completion_with_retries(model: str, prompt: str, max_retries: int = 10, retry_interval_sec: int = 20, validation_fn=None, **kwargs) -> Mapping:
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    openai.organization = os.getenv("OPENAI_API_ORG")
+    # openai.api_key = os.getenv("OPENAI_API_KEY")
+    # openai.organization = os.getenv("OPENAI_API_ORG")
+    openai.api_key = ""
+    openai.organization = ""
     print("Using OpenAI API with key:", openai.api_key, " | org:", openai.organization)
 
     if model == 'davinci': # smaller context length; TODO: Handle this more neatly

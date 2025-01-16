@@ -13,6 +13,7 @@ DEBERTA_MODEL_NAMES = ["microsoft/deberta-v3-xsmall", "microsoft/deberta-v3-smal
 
 def get_tokenizer(model):
     tokenizer = AutoTokenizer.from_pretrained(model)
+    tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
 # optional
@@ -109,24 +110,24 @@ def load_power_sentences(data_dir, split="train"):
 
     train_sentences, test_sentences, train_labels, test_labels = [], [], [], []
 
-    data = json.load(open(os.path.join(data_dir, 'power_examples.json')))
-    for p_type in data.keys():
-        for d in data[p_type]:
-            res = d['res']
-            if len(res.keys()) < 5: continue
-
-            if np.random.random() < 0.1:
-                sentences, labels = test_sentences, test_labels
-            else:
-                sentences, labels = train_sentences, train_labels
-
-            for i1, i2 in zip(range(1, 5), range(2, 6)):
-                s1, s2 = res[str(i1)], res[str(i2)]
-                sentences.append(s1)
-                sentences.append(s2)
+    #data = json.load(open(os.path.join(data_dir, 'power_examples.json')))
+    #for p_type in data.keys():
+    #    for d in data[p_type]:
+    #        res = d['res']
+    #        if len(res.keys()) < 5: continue
+    #
+    #        if np.random.random() < 0.1:
+    #            sentences, labels = test_sentences, test_labels
+    #        else:
+    #            sentences, labels = train_sentences, train_labels
+    #
+    #        for i1, i2 in zip(range(1, 5), range(2, 6)):
+    #            s1, s2 = res[str(i1)], res[str(i2)]
+    #            sentences.append(s1)
+    #            sentences.append(s2)
                 # label = [p == p_type for p in types_of_power]
-                label = L
-                labels.extend([label] * 2)
+    #            label = L
+    #            labels.extend([label] * 2)
 
     data = json.load(open(os.path.join(data_dir, 'power_examples_2.json')))
     for p_type in data.keys():
@@ -150,25 +151,25 @@ def load_power_sentences(data_dir, split="train"):
                 label = L
                 labels.extend([label] * 2)
 
-    path = os.path.join(data_dir, "all_data.csv")
-    df = pd.read_csv(path, header=0, index_col=0)
-    for i in range(df.shape[0]):
-        context = df.iloc[i, 0]
-
-        if np.random.random() < 0.1:
-            sentences, labels = test_sentences, test_labels
-        else:
-            sentences, labels = train_sentences, train_labels
-
-        if df.iloc[i, 3] == 'A > B':
-            sentences.append(context + " " + df.iloc[i, 1])
-            sentences.append(context + " " + df.iloc[i, 2])
-        else:
-            sentences.append(context + " " + df.iloc[i, 2])
-            sentences.append(context + " " + df.iloc[i, 1])
+    #path = os.path.join(data_dir, "all_data.csv")
+    #df = pd.read_csv(path, header=0, index_col=0)
+    #for i in range(df.shape[0]):
+    #    context = df.iloc[i, 0]
+    #
+    #    if np.random.random() < 0.1:
+    #        sentences, labels = test_sentences, test_labels
+    #    else:
+    #        sentences, labels = train_sentences, train_labels
+    #
+    #    if df.iloc[i, 3] == 'A > B':
+    #        sentences.append(context + " " + df.iloc[i, 1])
+    #        sentences.append(context + " " + df.iloc[i, 2])
+    #    else:
+    #        sentences.append(context + " " + df.iloc[i, 2])
+    #        sentences.append(context + " " + df.iloc[i, 1])
         # label = [p in df.iloc[i, 4] for p in types_of_power]
-        label = L
-        labels.extend([label] * 2)
+    #    label = L
+    #    labels.extend([label] * 2)
     
     if split == "train":
         return train_sentences, train_labels
